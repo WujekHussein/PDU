@@ -55,7 +55,13 @@ table_1 <- function(Users){
 #all_equal(SQLDF1,DPLYR1)
 #all_equal(SQLDF1,TABLE1)
 # Porowanie czasow wykonania - zakomentuj te czesc przed wyslaniem
-#microbenchmark(sql_1(Users), base_1(Users), dplyr_1(Users), table_1(Users))
+# microbenchmark(sql_1(Users), base_1(Users), dplyr_1(Users), table_1(Users))
+# Unit: milliseconds
+#          expr       min        lq      mean    median        uq       max neval
+# sql_1(Users) 183.76275 186.93589 192.18894 189.24978 193.33104 253.13020   100
+# base_1(Users) 102.06444 103.83002 110.24982 104.90681 106.47430 183.85208   100
+# dplyr_1(Users)  29.22518  30.30720  39.13469  30.94724  32.41433  96.15944   100
+# table_1(Users)  10.08141  10.67946  12.39634  11.05962  11.69483  71.66031   100
 
 # -----------------------------------------------------------------------------#
 # Zadanie 2
@@ -104,24 +110,27 @@ table_2 <- function(Posts){
 #all_equal(SQLDF2,DPLYR2)
 #all_equal(TABLE2, SQLDF2)
 # Porowanie czasow wykonania - zakomentuj te czesc przed wyslaniem
-#microbenchmark(sql_2(Posts), base_2(Posts), dplyr_2(Posts), table_2(Posts))
+# microbenchmark(sql_2(Posts), base_2(Posts), dplyr_2(Posts), table_2(Posts))
 
 # -----------------------------------------------------------------------------#
 # Zadanie 3
 # -----------------------------------------------------------------------------#
 
 sql_3 <- function(Posts, Users){
-    sqldf("SELECT Id, DisplayName, TotalViews
-FROM (
-SELECT OwnerUserId, SUM(ViewCount) as TotalViews
-FROM Posts
-WHERE PostTypeId = 1
-GROUP BY OwnerUserId
-) AS Questions
-JOIN Users
-ON Users.Id = Questions.OwnerUserId
-ORDER BY TotalViews DESC
-LIMIT 10")
+  
+  Questions <- sqldf(
+    'SELECT OwnerUserId, SUM(ViewCount) as TotalViews
+     FROM Posts 
+     WHERE PostTypeId = 1
+     GROUP BY OwnerUserId')
+  
+  sqldf("
+          SELECT Id, DisplayName, TotalViews
+          FROM Questions
+          JOIN Users
+          ON Users.Id = Questions.OwnerUserId
+          ORDER BY TotalViews DESC
+          LIMIT 10")
 }
 
 base_3 <- function(Posts, Users){
@@ -156,7 +165,13 @@ table_3 <- function(Posts, Users){
 #all_equal(DPLYR3, BASE3)
 #all_equal(DPLYR3, TABLE3)
 # Porowanie czasow wykonania - zakomentuj te czesc przed wyslaniem
-microbenchmark(sql_3(Posts,Users), base_3(Posts,Users), dplyr_3(Posts,Users), table_3(Posts, Users))
+# microbenchmark(sql_3(Posts,Users), base_3(Posts,Users), dplyr_3(Posts,Users), table_3(Posts, Users))
+# Unit: milliseconds
+#                expr       min        lq     mean    median        uq      max neval
+# sql_3(Posts, Users) 736.69772 753.58000 773.2844 760.84774 784.82534 861.5291   100
+# base_3(Posts, Users) 244.37739 249.41539 282.9387 258.58162 309.30306 551.4526   100
+# dplyr_3(Posts, Users)  81.70995  84.03877 108.8659  86.99693 142.81723 186.8412   100
+# table_3(Posts, Users)  18.76055  19.60366  32.9430  21.59652  22.32329 296.3285   100
 
 # -----------------------------------------------------------------------------#
 # Zadanie  4
@@ -204,49 +219,118 @@ base_4 <- function(Posts, Users){
 }
 
 dplyr_4 <- function(Posts, Users){
-    # Tu umiesc rozwiazanie oraz komentarze
-    # 
+    Posts %>%
+    filter(PostTypeId==2) %>%
+    group_by(OwnerUserId) %>%
+    summarise(AnswersNumber = n() ) -> Answers
+  
+    Posts %>%
+      filter(PostTypeId==1) %>%
+      group_by(OwnerUserId) %>%
+      summarise(QuestionsNumber = n() ) -> Questions 
+    Answers %>%
+      filter(!is.na(OwnerUserId)) -> Answers
+    Questions %>%
+      filter(!is.na(OwnerUserId)) -> Questions
+    
+    Answers %>%
+      inner_join(Questions, by=c("OwnerUserId"="OwnerUserId")) %>%
+      filter(AnswersNumber>QuestionsNumber) %>%
+      arrange(-AnswersNumber) %>%
+      slice(1:5) -> PostsCounts
+    
+    PostsCounts %>%
+      inner_join(Users, by=c("OwnerUserId"="Id")) %>%
+      select(DisplayName, QuestionsNumber, AnswersNumber, Location, Reputation, UpVotes, DownVotes) 
 }
 
 table_4 <- function(Posts, Users){
-    # Tu umiesc rozwiazanie oraz komentarze
-    # 
+    Answers <- as.data.table(Posts)[PostTypeId==2 & !is.na(OwnerUserId), .(AnswersNumber = .N), by= OwnerUserId]
+    Questions <- as.data.table(Posts)[PostTypeId==1 & !is.na(OwnerUserId), .(QuestionsNumber = .N), by=OwnerUserId]
+    PostsCounts <- Questions[Answers, on=c(OwnerUserId="OwnerUserId")][!is.na(QuestionsNumber)][AnswersNumber>QuestionsNumber]
+    PostsCounts <- setorder(PostsCounts, -AnswersNumber)[1:5]
+    as.data.table(Users)[PostsCounts, on=c(Id="OwnerUserId")][, .(DisplayName, QuestionsNumber, AnswersNumber, Location, Reputation, UpVotes, DownVotes)]
 }
 
 # Sprawdzenie rownowaznosci wynikow - zakomentuj te czesc przed wyslaniem
 #all_equal(SQLDF4, BASE4, ignore_row_order = TRUE) #niewiadomo czemu nie zwraca 
 #TRUE, jako że mamy tylko 5 wierszy można porównać wyświetlając ramki i przekonać 
 #się, że wychodzi to samo 
-
+#all_equal(SQLDF4, DPLYR4)
+#all_equal(SQLDF4, TABLE4)
 # Porowanie czasow wykonania - zakomentuj te czesc przed wyslaniem
-
+# microbenchmark(sql_4(Posts,Users), base_4(Posts,Users), dplyr_4(Posts,Users), table_4(Posts, Users))
+# Unit: milliseconds
+#               expr     min        lq      mean    median        uq       max     neval
+# sql_4(Posts, Users) 811.68423 828.53415 867.72806 846.88357 895.91597 1136.7557   100
+# base_4(Posts, Users) 346.47391 369.17087 414.70981 422.24043 433.22664  656.9046   100
+# dplyr_4(Posts, Users) 326.86724 350.60097 389.59014 382.05556 408.29459  673.8282   100
+# table_4(Posts, Users)  21.26979  22.49576  44.54296  23.93542  83.49347  139.0104   100
 
 # -----------------------------------------------------------------------------#
 # Zadanie 5
 # -----------------------------------------------------------------------------#
 
 sql_5 <- function(Posts, Comments, Users){
-    # Tu umiesc rozwiazanie oraz komentarze
-    # 
+  
+  CmtTotScr <- sqldf('SELECT PostId, SUM(Score) AS CommentsTotalScore
+                        FROM Comments
+                        GROUP BY PostId')
+  PostsBestComments <- sqldf('
+        SELECT Posts.OwnerUserId, Posts.Title, Posts.CommentCount, Posts.ViewCount, 
+               CmtTotScr.CommentsTotalScore
+        FROM CmtTotScr
+        JOIN Posts ON Posts.Id = CmtTotScr.PostId
+        WHERE Posts.PostTypeId=1')
+  
+  sqldf('SELECT Title, CommentCount, ViewCount, CommentsTotalScore, DisplayName, Reputation, Location
+            FROM PostsBestComments
+            JOIN Users ON PostsBestComments.OwnerUserId = Users.Id
+            ORDER BY CommentsTotalScore DESC
+            LIMIT 10')
 }
 
 base_5 <- function(Posts, Comments, Users){
-    # Tu umiesc rozwiazanie oraz komentarze
-    # 
+    CmtTotScr <- aggregate(Score~PostId,data=Comments, FUN=sum) 
+    names(CmtTotScr)[2] <- "CommentsTotalScore"
+    PostsBestComments <- merge(CmtTotScr, Posts, by.x="PostId", by.y="Id")
+    PostsBestComments <- PostsBestComments[PostsBestComments$PostTypeId==1, c("OwnerUserId", "Title", "CommentCount", "ViewCount", "CommentsTotalScore")]
+    wynpra <- merge(PostsBestComments, Users, by.x="OwnerUserId", by.y="Id")
+    wynpra[order(-wynpra$CommentsTotalScore), c("Title", "CommentCount", "ViewCount", "CommentsTotalScore", "DisplayName", "Reputation","Location")][1:10,]
 }
 
 dplyr_5 <- function(Posts, Comments, Users){
-    # Tu umiesc rozwiazanie oraz komentarze
-    # 
+    Comments %>%
+    group_by(PostId) %>%
+    summarise(CommentsTotalScore=sum(Score)) -> CmtTotScr
+    CmtTotScr %>%
+    inner_join(Posts, by=c("PostId"="Id")) %>%
+      filter(PostTypeId==1) %>%
+      select(OwnerUserId, Title, CommentCount, ViewCount, CommentsTotalScore) -> PostsBestComments
+    PostsBestComments %>% 
+      inner_join(Users, by=c("OwnerUserId"="Id")) %>%
+      select(Title, CommentCount, ViewCount, CommentsTotalScore, DisplayName, Reputation, Location) %>%
+      arrange(-CommentsTotalScore) %>%
+      slice(1:10) 
 }
 
 table_5 <- function(Posts, Comments, Users){
-    # Tu umiesc rozwiazanie oraz komentarze
-    # 
+    CmtTotScr <- as.data.table(Comments)[, .(CommentsTotalScore=sum(Score)), by=PostId]
+    PostsBestComments <- as.data.table(Posts)[CmtTotScr,on=c(Id="PostId")][PostTypeId==1][, .(OwnerUserId, Title, CommentCount, ViewCount, CommentsTotalScore)]
+    setorder(as.data.table(Users)[PostsBestComments, on=c(Id="OwnerUserId")][, .(Title, CommentCount, ViewCount, CommentsTotalScore, DisplayName, Reputation, Location)][!is.na(DisplayName) & !is.na(Reputation) & !is.na(Location)], -CommentsTotalScore)[1:10] 
 }
 
 # Sprawdzenie rownowaznosci wynikow - zakomentuj te czesc przed wyslaniem
+# all_equal(SQLDF5, BASE5)
+# all_equal(SQLDF5, DPLYR5)
+# all_equal(SQLDF5, TABLE5)
+
 
 # Porowanie czasow wykonania - zakomentuj te czesc przed wyslaniem
-
-
+# microbenchmark(sql_5(Posts, Comments, Users), base_5(Posts, Comments, Users), dplyr_5(Posts, Comments, Users), table_5(Posts, Comments, Users))
+# Unit: milliseconds
+#                          expr        min         lq       mean     median        uq       max neval
+# sql_5(Posts, Comments, Users) 1207.84946 1228.18848 1272.89879 1256.11190 1295.9324 1555.1469   100
+# base_5(Posts, Comments, Users)  778.09996  846.60452  880.75000  866.76643  903.8784 1202.5937   100
+# dplyr_5(Posts, Comments, Users)  274.04144  309.40939  369.92042  352.01544  394.6632  688.0110   100
+# table_5(Posts, Comments, Users)   54.05529   58.07156   96.44303   69.44905  132.4975  374.2502   100
